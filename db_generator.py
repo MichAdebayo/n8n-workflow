@@ -1,53 +1,22 @@
-#!/usr/bin/env python3
-"""db-creator.py
-
-Generate synthetic relational data (District, Store, Time, Item, Sales)
-and load it into a PostgreSQL database. Uses Faker + pandas + psycopg2.
-
-Usage (example):
-  python3 db-creator.py --host localhost --port 5432 --db n8n_database \
-    --user admin_user_db --password secret --districts 5 --stores 50 --items 200 --months 24 --sales-rows 5000
-
-The script creates tables if they do not exist and uses COPY for efficient bulk
-loads. Set --seed for reproducible output.
-"""
-
-from __future__ import annotations
-
 import argparse
-import io
 import random
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
 
 import pandas as pd
-import psycopg2
 from faker import Faker
-
 
 @dataclass
 class DBConfig:
-    host: str = "localhost"
-    port: int = 5432
-    dbname: str = "n8n_database"
-    user: str = "admin_user_db"
-    password: str = "password"
+    dbname: str = "n8n_database.db"
 
     def dsn(self) -> str:
-        return f"host={self.host} port={self.port} dbname={self.dbname} user={self.user} password={self.password}"
+        return self.dbname
 
 
 class DBCreator:
-    """Create synthetic dataframes and load them into Postgres.
-
-    Methods:
-      - create_tables(): create schema if not exists
-      - generate_*(): produce pandas DataFrames
-      - df_to_postgres(): fast COPY-based upload
-      - run(): orchestrate generation and upload
-    """
-
     def __init__(self, dbconfig: DBConfig, seed: int = 42):
         self.db = dbconfig
         self.seed = seed
@@ -56,13 +25,13 @@ class DBCreator:
         random.seed(seed)
 
     def connect(self):
-        return psycopg2.connect(self.db.dsn())
+        return sqlite3.connect(self.db.dsn())
 
     def create_tables(self):
         sql = [
             """
             CREATE TABLE IF NOT EXISTS district (
-                districtid SERIAL PRIMARY KEY,
+                districtid INTEGER PRIMARY KEY AUTOINCREMENT,
                 businessunitid INTEGER,
                 districtname TEXT,
                 dm TEXT,
@@ -71,16 +40,17 @@ class DBCreator:
             """,
             """
             CREATE TABLE IF NOT EXISTS store (
-                locationid SERIAL PRIMARY KEY,
+                locationid INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
                 city TEXT,
                 postalcode TEXT,
-                districtid INTEGER REFERENCES district(districtid)
+                districtid INTEGER,
+                FOREIGN KEY(districtid) REFERENCES district(districtid)
             );
             """,
             """
             CREATE TABLE IF NOT EXISTS reporting_time (
-                reportingperiodid SERIAL PRIMARY KEY,
+                reportingperiodid INTEGER PRIMARY KEY AUTOINCREMENT,
                 fiscalyear INTEGER,
                 fiscalmonth INTEGER,
                 month_name TEXT,
@@ -89,7 +59,7 @@ class DBCreator:
             """,
             """
             CREATE TABLE IF NOT EXISTS item (
-                itemid SERIAL PRIMARY KEY,
+                itemid INTEGER PRIMARY KEY AUTOINCREMENT,
                 familyname TEXT,
                 category TEXT,
                 segment TEXT,
@@ -98,16 +68,19 @@ class DBCreator:
             """,
             """
             CREATE TABLE IF NOT EXISTS sales (
-                salesid SERIAL PRIMARY KEY,
-                itemid INTEGER REFERENCES item(itemid),
-                locationid INTEGER REFERENCES store(locationid),
-                reportingperiodid INTEGER REFERENCES reporting_time(reportingperiodid),
+                salesid INTEGER PRIMARY KEY AUTOINCREMENT,
+                itemid INTEGER,
+                locationid INTEGER,
+                reportingperiodid INTEGER,
                 scenarioid INTEGER,
-                sum_grossmarginamount NUMERIC,
-                sum_regular_sales_dollars NUMERIC,
+                sum_grossmarginamount REAL,
+                sum_regular_sales_dollars REAL,
                 sum_regular_sales_units INTEGER,
-                sum_markdown_sales_dollars NUMERIC,
-                sum_markdown_sales_units INTEGER
+                sum_markdown_sales_dollars REAL,
+                sum_markdown_sales_units INTEGER,
+                FOREIGN KEY(itemid) REFERENCES item(itemid),
+                FOREIGN KEY(locationid) REFERENCES store(locationid),
+                FOREIGN KEY(reportingperiodid) REFERENCES reporting_time(reportingperiodid)
             );
             """,
         ]
@@ -124,7 +97,7 @@ class DBCreator:
 
     def generate_districts(self, n: int = 5) -> pd.DataFrame:
         rows = []
-        for i in range(n):
+        for _ in range(n):
             rows.append(
                 {
                     "businessunitid": random.randint(1, 10),
@@ -133,18 +106,12 @@ class DBCreator:
                     "dm_pic": self.fake.email(),
                 }
             )
-        df = pd.DataFrame(rows)
-        # let Postgres assign districtid (serial), but keep index for relations if needed
-        return df
+        return pd.DataFrame(rows)
 
-    def generate_stores(
-        self, n: int = 50, districts: pd.DataFrame | None = None
-    ) -> pd.DataFrame:
+    def generate_stores(self, n: int = 50, districts: pd.DataFrame | None = None) -> pd.DataFrame:
         rows = []
-        district_ids = (
-            list(range(1, len(districts) + 1)) if districts is not None else None
-        )
-        for i in range(n):
+        district_ids = list(range(1, len(districts) + 1)) if districts is not None else None
+        for _ in range(n):
             rows.append(
                 {
                     "name": f"{self.fake.company()} Store",
@@ -155,25 +122,18 @@ class DBCreator:
             )
         return pd.DataFrame(rows)
 
-    def generate_time(
-        self, months: int = 24, start: Optional[datetime] = None
-    ) -> pd.DataFrame:
+    def generate_time(self, months: int = 24, start: Optional[datetime] = None) -> pd.DataFrame:
         if start is None:
-            # default to start at beginning of current month minus months
             today = datetime.today()
-            start = datetime(today.year, today.month, 1) - timedelta(
-                days=30 * (months - 1)
-            )
+            start = datetime(today.year, today.month, 1) - timedelta(days=30 * (months - 1))
 
         rows = []
         cur = start
         for i in range(months):
-            fiscalyear = cur.year
-            fiscalmonth = cur.month
             rows.append(
                 {
-                    "fiscalyear": fiscalyear,
-                    "fiscalmonth": fiscalmonth,
+                    "fiscalyear": cur.year,
+                    "fiscalmonth": cur.month,
                     "month_name": cur.strftime("%B"),
                     "period": i + 1,
                 }
@@ -190,7 +150,7 @@ class DBCreator:
         categories = ["Grocery", "Electronics", "Apparel", "Home", "Beauty"]
         segments = ["A", "B", "C"]
         rows = []
-        for i in range(n):
+        for _ in range(n):
             rows.append(
                 {
                     "familyname": self.fake.word().title(),
@@ -201,13 +161,7 @@ class DBCreator:
             )
         return pd.DataFrame(rows)
 
-    def generate_sales(
-        self,
-        n_rows: int,
-        items: pd.DataFrame,
-        stores: pd.DataFrame,
-        periods: pd.DataFrame,
-    ) -> pd.DataFrame:
+    def generate_sales(self, n_rows: int, items: pd.DataFrame, stores: pd.DataFrame, periods: pd.DataFrame) -> pd.DataFrame:
         rows = []
         item_count = len(items)
         store_count = len(stores)
@@ -218,7 +172,6 @@ class DBCreator:
             store_idx = random.randint(1, store_count)
             period_idx = random.randint(1, period_count)
 
-            # base sales depending on category/segment could be added; keep simple
             units = max(0, int(random.gauss(20, 10)))
             price = round(random.uniform(5, 200), 2)
             regular_dollars = round(units * price, 2)
@@ -242,144 +195,80 @@ class DBCreator:
 
         return pd.DataFrame(rows)
 
-    def df_to_postgres(self, table: str, df: pd.DataFrame):
+    def df_to_sqlite(self, table: str, df: pd.DataFrame):
         if df.empty:
             return
-
-        # use COPY via StringIO for performance; ensure column order
-        cols = list(df.columns)
-        sio = io.StringIO()
-        df.to_csv(sio, index=False, header=True)
-        sio.seek(0)
-
         conn = self.connect()
         try:
-            cur = conn.cursor()
-            sql = f"COPY {table}({', '.join(cols)}) FROM STDIN WITH CSV HEADER"
-            cur.copy_expert(sql, sio)
-            conn.commit()
-            cur.close()
+            df.to_sql(table, conn, if_exists="append", index=False)
         finally:
             conn.close()
 
-    def run(
-        self,
-        districts=5,
-        stores=50,
-        items=200,
-        months=24,
-        sales_rows=5000,
-    ):
-        # create schema
+    def run(self, districts=5, stores=50, items=200, months=24, sales_rows=5000):
         print("[INFO] Creating tables...")
         self.create_tables()
 
         print("[INFO] Generating districts...")
         df_dist = self.generate_districts(districts)
-        # insert districts and fetch assigned ids
-        # We will insert using COPY but need to preserve serial ids; perform COPY into a temp table
-        # Simpler: insert districts one-by-one to get ids
+        self._reset_table("district")
+        self.df_to_sqlite("district", df_dist)
+
+        print("[INFO] Generating stores...")
+        df_stores = self.generate_stores(stores, districts=df_dist)
+        self._reset_table("store")
+        self.df_to_sqlite("store", df_stores)
+
+        print("[INFO] Generating reporting periods...")
+        df_time = self.generate_time(months=months)
+        self._reset_table("reporting_time")
+        self.df_to_sqlite("reporting_time", df_time)
+
+        print("[INFO] Generating items...")
+        df_items = self.generate_items(items)
+        self._reset_table("item")
+        self.df_to_sqlite("item", df_items)
+
+        print(f"[INFO] Generating sales rows: {sales_rows}...")
+        df_sales = self.generate_sales(sales_rows, df_items, df_stores, df_time)
+        self._reset_table("sales")
+        self.df_to_sqlite("sales", df_sales)
+
+        print("[DONE] Data generation and load finished.")
+
+    def _reset_table(self, table: str):
         conn = self.connect()
         try:
             cur = conn.cursor()
-            cur.execute("TRUNCATE TABLE district RESTART IDENTITY CASCADE;")
-            for _, row in df_dist.iterrows():
-                cur.execute(
-                    "INSERT INTO district (businessunitid, districtname, dm, dm_pic) VALUES (%s,%s,%s,%s)",
-                    (row.businessunitid, row.districtname, row.dm, row.dm_pic),
-                )
+            cur.execute(f"DELETE FROM {table};")
+            cur.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}';")
             conn.commit()
             cur.close()
         finally:
             conn.close()
 
-        # Stores
-        print("[INFO] Generating stores...")
-        df_stores = self.generate_stores(stores, districts=df_dist)
-        # ensure store ids start fresh
-        conn = self.connect()
-        try:
-            cur = conn.cursor()
-            cur.execute("TRUNCATE TABLE store RESTART IDENTITY CASCADE;")
-            # use COPY for stores
-            self.df_to_postgres("store", df_stores)
-            cur.close()
-        finally:
-            conn.close()
-
-        # Time
-        print("[INFO] Generating reporting periods (time)...")
-        df_time = self.generate_time(months=months)
-        conn = self.connect()
-        try:
-            cur = conn.cursor()
-            cur.execute("TRUNCATE TABLE reporting_time RESTART IDENTITY CASCADE;")
-            self.df_to_postgres("reporting_time", df_time)
-            cur.close()
-        finally:
-            conn.close()
-
-        # Items
-        print("[INFO] Generating items...")
-        df_items = self.generate_items(n=items)
-        conn = self.connect()
-        try:
-            cur = conn.cursor()
-            cur.execute("TRUNCATE TABLE item RESTART IDENTITY CASCADE;")
-            self.df_to_postgres("item", df_items)
-            cur.close()
-        finally:
-            conn.close()
-
-        # Sales
-        print(f"[INFO] Generating sales rows: {sales_rows}...")
-        df_sales = self.generate_sales(sales_rows, df_items, df_stores, df_time)
-        conn = self.connect()
-        try:
-            cur = conn.cursor()
-            cur.execute("TRUNCATE TABLE sales RESTART IDENTITY CASCADE;")
-            self.df_to_postgres("sales", df_sales)
-            cur.close()
-        finally:
-            conn.close()
-
-        print("[DONE] Data generation and load finished.")
-
 
 def parse_args():
-    p = argparse.ArgumentParser()
-    p.add_argument("--host", default="localhost")
-    p.add_argument("--port", type=int, default=5432)
-    p.add_argument("--db", default="n8n_database")
-    p.add_argument("--user", default="admin_user_db")
-    p.add_argument("--password", default="password")
-    p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--districts", type=int, default=5)
-    p.add_argument("--stores", type=int, default=50)
-    p.add_argument("--items", type=int, default=200)
-    p.add_argument("--months", type=int, default=24)
-    p.add_argument("--sales-rows", type=int, default=5000)
-    return p.parse_args()
-
+        p = argparse.ArgumentParser()
+        p.add_argument("--db", default="n8n_database.db")
+        p.add_argument("--seed", type=int, default=42)
+        p.add_argument("--districts", type=int, default=5)
+        p.add_argument("--stores", type=int, default=50)
+        p.add_argument("--items", type=int, default=200)
+        p.add_argument("--months", type=int, default=24)
+        p.add_argument("--sales-rows", type=int, default=5000)
+        return p.parse_args()
 
 def main():
     args = parse_args()
-    cfg = DBConfig(
-        host=args.host,
-        port=args.port,
-        dbname=args.db,
-        user=args.user,
-        password=args.password,
-    )
+    cfg = DBConfig(dbname=args.db)
     creator = DBCreator(cfg, seed=args.seed)
     creator.run(
-        districts=args.districts,
-        stores=args.stores,
-        items=args.items,
-        months=args.months,
-        sales_rows=args.sales_rows,
+    districts=args.districts,
+    stores=args.stores,
+    items=args.items,
+    months=args.months,
+    sales_rows=args.sales_rows,
     )
-
 
 if __name__ == "__main__":
     main()
