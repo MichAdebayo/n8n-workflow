@@ -1,0 +1,430 @@
+{
+  "name": "Reporting Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -400,
+        -48
+      ],
+      "id": "88cd59a8-322c-444e-87c5-2b9f8bd50f21",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.message.content.sql }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        368,
+        -48
+      ],
+      "id": "10fad358-a9a4-424c-831c-53d46cee773f",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "1H4TDfNebh53BnEE",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.all().map(i => i.json);\n\nconst districts = [...new Set(data.map(d => d.districtname))];\n\nconst last7 = districts.map(d => {\n  const row = data.find(r => r.districtname === d && r.period_label === \"last_7_days\");\n  return row ? parseFloat(row.total_sales) : 0;\n});\n\nconst prev7 = districts.map(d => {\n  const row = data.find(r => r.districtname === d && r.period_label === \"previous_7_days\");\n  return row ? parseFloat(row.total_sales) : 0;\n});\n\nconst chartConfig = {\n  type: \"bar\",\n  data: {\n    labels: districts,\n    datasets: [\n      { label: \"Last 7 Days Sales\", data: last7, backgroundColor: \"rgba(54,162,235,0.6)\" },\n      { label: \"Previous 7 Days Sales\", data: prev7, backgroundColor: \"rgba(255,99,132,0.6)\" }\n    ]\n  },\n  options: {\n    title: { display: true, text: \"Weekly Sales by District\" },\n    responsive: true\n  }\n};\n\n// Create the QuickChart URL (encode the chart config)\nconst url = \"https://quickchart.io/chart?c=\" + encodeURIComponent(JSON.stringify(chartConfig));\n\nreturn [{\n  json: {\n    url\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        -336
+      ],
+      "id": "f9ee34d6-3a25-4553-8086-a40251f077dc",
+      "name": "Format QuickChart Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.all().map(i => i.json);\n\n// Get all unique districts\nconst districts = [...new Set(data.map(d => d.district))];\n\n// Build table header\nlet table = \"District | Last 7 Days Sales | Last 7 Days Margin | Previous 7 Days Sales | Previous 7 Days Margin\\n\";\ntable += \"-------- | ---------------- | ---------------- | ------------------- | -------------------\\n\";\n\n// Populate table rows\ndistricts.forEach(d => {\n  const lastWeek = data.find(i => i.district === d && i.period === \"last_7_days\");\n  const prevWeek = data.find(i => i.district === d && i.period === \"previous_7_days\");\n  \n  table += `${d} | ${lastWeek ? lastWeek.sales : 0} | ${lastWeek ? lastWeek.margin : 0} | ${prevWeek ? prevWeek.sales : 0} | ${prevWeek ? prevWeek.margin : 0}\\n`;\n});\n\nreturn [{\n  json: {\n    llm_table: table\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        208
+      ],
+      "id": "a52c8dab-b49a-419c-94bc-8be1df6bbaa8",
+      "name": "Format for LLM Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.all().map(i => i.json);\n\n// convert total_sales and total_margin to float\nconst formatted = data.map(r => ({\n  district: r.districtname,\n  period: r.period_label,\n  sales: parseFloat(r.total_sales),\n  margin: parseFloat(r.total_margin)\n}));\n\nreturn formatted.map(row => ({ json: row }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        208
+      ],
+      "id": "cf4fb421-4e7e-4f02-aa55-ef049a3b276b",
+      "name": "Clean Query Output"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "193fd952-613c-4928-9a92-e6e2a7d7ca54",
+              "name": "llm_data",
+              "value": "={{ $json.llm_table }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1008,
+        208
+      ],
+      "id": "254cce27-a6bf-4d02-ae8e-426e3df2888d",
+      "name": "Set LLM variable"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an analytics assistant. Here is the weekly sales comparison for all districts:\n\n{{$json[\"llm_data\"]}}\n\nPlease provide an executive summary highlighting:\n- Overall growth trends\n- Top-performing districts\n- Underperforming districts\n- Any quick recommendations\n\nKeep it concise (2–3 sentences)."
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {
+          "temperature": 0.2,
+          "topP": 0.9
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1232,
+        208
+      ],
+      "id": "8ba5bb86-fa9b-4bc8-9d97-9162fcba04a6",
+      "name": "Get Business Insights",
+      "credentials": {
+        "openAiApi": {
+          "id": "skf48VtfynPnhrsE",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are an analytics assistant. Only output a single Postgres SELECT SQL query (no explanation, no additional text).\n\nDatabase schema (Postgres):\n\nsales(\nsalesid,\nitemid,\nlocationid,\nreportingperiodid,\nscenarioid,\nsum_grossmarginamount,\nsum_regular_sales_dollars,\nsum_regular_sales_units,\nsum_markdown_sales_dollars,\nsum_markdown_sales_units,\ntotal_revenue,\ntotal_gross_margin\n)\n\nreporting_time(\nreportingperiodid,\nfiscalyear,\nfiscalmonth,\nweek_number,\nmonth_name,\nperiod,\nweek_start,\nweek_end\n)\n\nstore(\nlocationid,\nname,\ncity,\npostalcode,\ndistrictid\n)\n\ndistrict(\ndistrictid,\ndistrictname,\nbusinessunitid,\ndm,\ndm_pic\n)\n\nitem(\nitemid,\nfamilyname,\ncategory,\nsegment,\nbuyer\n)\n\nTask:\nWrite a single Postgres SELECT query that returns total revenue and gross margin by district for the **last 7 calendar days** (relative to the maximum `week_end` in `reporting_time`) and for the **preceding 7 days** (days 8–14 before that). Compare these two periods by returning rows for each district/period.\n\nRequired output columns (exact names):\n\n* period_label (values: 'last_7_days' or 'previous_7_days')\n* start_date\n* end_date\n* districtname\n* total_sales -- sum of sales.total_revenue\n* total_margin -- sum of sales.total_gross_margin\n\nRequirements/behavior:\n\n* Use reporting_time.week_start / week_end to align dates, but aggregate over daily granularity so results cover rolling 7-day windows.\n* Join sales.reportingperiodid -> reporting_time.reportingperiodid.\n* Join sales -> store (sales.locationid = store.locationid) -> district (store.districtid = district.districtid).\n* Include districts with zero sales during a period (use LEFT JOINs and COALESCE to show zeros).\n* Return exactly two rows per district (one for last 7 days, one for previous 7 days).\n* Order by period_label, districtname.\n\n Constraints:\n* REMOVE EVERY INSTANCE OF \"\\n\" in the final response to ensure a cleanly parsed response. \n* Ensure no missing joins and that the query will not return an error. \n* Double check your query before returning the final response.\n* Avoid this error \"Problem in node ‘Execute a SQL query‘\nmissing FROM-clause entry for table \"s\"\""
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -192,
+        -48
+      ],
+      "id": "09394f4e-9239-4ef3-a190-8feaef75413d",
+      "name": "Generate SQL Query",
+      "credentials": {
+        "openAiApi": {
+          "id": "skf48VtfynPnhrsE",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d9c77bfd-0ba3-41ab-a672-c9c5970d6741",
+              "name": "message.content.sql",
+              "value": "={{ $json.message.content.query }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        160,
+        -48
+      ],
+      "id": "78838190-a75f-4c3e-9eaf-8decf63251cb",
+      "name": "Set Query Variable"
+    },
+    {
+      "parameters": {
+        "fromEmail": "adebayomichael4@gmail.com",
+        "toEmail": "ritefluential@gmail.com",
+        "subject": "Sales Weekly Digest for Review",
+        "html": "=<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Weekly Sales Digest (Pending Approval)</title>\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      color: #333;\n      line-height: 1.5;\n      margin: 0;\n      padding: 0;\n      background-color: #f4f4f4;\n    }\n    .container {\n      max-width: 600px;\n      margin: 20px auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 8px;\n      box-shadow: 0 0 10px rgba(0,0,0,0.1);\n      text-align: center;\n    }\n    h2, h3 {\n      color: #2E86C1;\n    }\n    .buttons a {\n      display: inline-block;\n      margin: 10px;\n      padding: 10px 20px;\n      color: #fff;\n      text-decoration: none;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .approve {\n      background-color: #28a745;\n    }\n    .reject {\n      background-color: #dc3545;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <h2>Weekly Sales Digest</h2>\n    <h3>(Pending Approval)</h3>\n\n    <!-- Embed QuickChart -->\n    <img src=\"{{$json[\"url\"]}}\" alt=\"Sales Chart\" width=\"100%\" style=\"max-width:550px;\"/>\n\n    <p>{{ $json.message.content.executive_summary }}</p>\n\n    <p>Please approve or reject by clicking one of the buttons below:</p>\n    <div class=\"buttons\">\n      <a href=\"http://0.0.0.0:5678/webhook-test/intermediate-step?id={{$execution.id}}\" class=\"approve\">Approve</a>\n      <a href=\"https://your-n8n-domain/webhook/reject?workflowId=1\" class=\"reject\">Reject</a>\n    </div>\n  </div>\n</body>\n</html>\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2096,
+        -64
+      ],
+      "id": "6b413ea5-0a00-42d9-82fe-f93afbf89642",
+      "name": "Send email",
+      "webhookId": "3dac3720-62b8-4c15-b1f4-d8a3d84a5e0c",
+      "credentials": {
+        "smtp": {
+          "id": "FjOUKJCom1hc1D7a",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1616,
+        -64
+      ],
+      "id": "0e4e99a5-2edd-49f6-bd13-d5fb4e50ed25",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "caf0c9bd-2925-4c71-9b55-408ec1c38f5d",
+              "name": "url",
+              "value": "={{ $json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "fffc032a-0001-431e-9c36-c40a272e1acd",
+              "name": "message.content.executive_summary",
+              "value": "={{ $json.message.content.executive_summary }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1824,
+        -64
+      ],
+      "id": "ba78f8b2-d5bd-437a-a1ec-796aec1657c0",
+      "name": "Set"
+    }
+  ],
+  "pinData": {
+    "Schedule Trigger": [
+      {
+        "json": {
+          "timestamp": "2025-10-01T03:25:16.376-04:00",
+          "Readable date": "October 1st 2025, 3:25:16 am",
+          "Readable time": "3:25:16 am",
+          "Day of week": "Wednesday",
+          "Year": "2025",
+          "Month": "October",
+          "Day of month": "01",
+          "Hour": "03",
+          "Minute": "25",
+          "Second": "16",
+          "Timezone": "America/New_York (UTC-04:00)"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Generate SQL Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Format QuickChart Input",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Clean Query Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format QuickChart Input": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format for LLM Input": {
+      "main": [
+        [
+          {
+            "node": "Set LLM variable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Query Output": {
+      "main": [
+        [
+          {
+            "node": "Format for LLM Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set LLM variable": {
+      "main": [
+        [
+          {
+            "node": "Get Business Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Business Insights": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Generate SQL Query": {
+      "main": [
+        [
+          {
+            "node": "Set Query Variable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Query Variable": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email": {
+      "main": [
+        []
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2c47f2dc-6ad7-40c1-ac97-9d9e521ad560",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33e5ba94f4c62aa9dcb8026b15f5873f3401285179a59eddd4dbd58a7ecba0c9"
+  },
+  "id": "9w883G4U9yoCgb89",
+  "tags": []
+}
