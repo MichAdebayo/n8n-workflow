@@ -34,6 +34,8 @@ from faker import Faker
 
 @dataclass
 class DBConfig:
+    """Database connection configuration."""
+
     # Default to 'localhost' for local development
     host: str = os.getenv("POSTGRES_HOST", "localhost")
     port: int = int(os.getenv("DB_POSTGRESDB_PORT", 5433))
@@ -65,6 +67,7 @@ class DBCreator:
         random.seed(seed)
 
     def connect(self):
+        """Connect to the Postgres database using the provided configuration."""
         try:
             return psycopg2.connect(self.db.dsn())
         except psycopg2.OperationalError as e:
@@ -105,6 +108,7 @@ class DBCreator:
             raise
 
     def create_tables(self):
+        """Create the necessary tables if they do not already exist."""
         sql = [
             """
             CREATE TABLE IF NOT EXISTS district (
@@ -217,6 +221,7 @@ class DBCreator:
     def generate_stores(
         self, n: int = 50, districts: pd.DataFrame | None = None
     ) -> pd.DataFrame:
+        """Generate a DataFrame of stores with fake data."""
         rows = []
         # If districts DataFrame includes real districtid column, use it; otherwise
         # fallback to generating sequential ids 1..n (suitable for fresh DB).
@@ -258,21 +263,21 @@ class DBCreator:
                 )
         else:
             # fallback: no district info available
-            for _ in range(n):
-                rows.append(
-                    {
-                        "name": f"{self.fake.company()} Store",
-                        "city": self.fake.city(),
-                        "postalcode": self.fake.postcode(),
-                        "districtid": None,
-                    }
-                )
-
+            rows.extend(
+                {
+                    "name": f"{self.fake.company()} Store",
+                    "city": self.fake.city(),
+                    "postalcode": self.fake.postcode(),
+                    "districtid": None,
+                }
+                for _ in range(n)
+            )
         return pd.DataFrame(rows)
 
     def generate_time(
         self, months: int = 24, start: Optional[datetime] = None
     ) -> pd.DataFrame:
+        """Generate a DataFrame of reporting periods with weekly granularity."""
         # For weekly reporting the `months` parameter is treated as number of weeks.
         weeks = months
         if start is None:
@@ -303,6 +308,7 @@ class DBCreator:
         return pd.DataFrame(rows)
 
     def generate_items(self, n: int = 200) -> pd.DataFrame:
+        """Generate a DataFrame of items with fake data."""
         categories = ["Grocery", "Electronics", "Apparel", "Home", "Beauty"]
         segments = ["A", "B", "C"]
         rows = []
@@ -449,6 +455,7 @@ class DBCreator:
         return pd.DataFrame(rows)
 
     def df_to_postgres(self, table: str, df: pd.DataFrame):
+        """Use COPY via StringIO to efficiently bulk load a DataFrame into Postgres."""
         if df.empty:
             return
 
@@ -477,6 +484,8 @@ class DBCreator:
         sales_rows=5000,
         force_recreate: bool = False,
     ):
+
+        # Orchestrate the data generation and loading process.
         if force_recreate:
             print("[WARN] --force-recreate provided: dropping existing tables...")
             self.drop_tables()
@@ -673,6 +682,7 @@ class DBCreator:
 
 
 def parse_args():
+    """Parse command-line arguments with sensible defaults from environment variables."""
     p = argparse.ArgumentParser()
     # Load defaults from environment variables, fallback to safe values
     p.add_argument("--host", default=os.getenv("POSTGRES_HOST", "localhost"))
@@ -700,6 +710,7 @@ def parse_args():
 
 
 def main():
+    """Main entry point for the script."""
     args = parse_args()
     cfg = DBConfig(
         host=args.host,
