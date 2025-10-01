@@ -1,5 +1,5 @@
 # N8N Sales Data Report Automation
-This automation workflow is run from self-hosted instances of N8N and PostgreSQL. The PostgreSQL backend is populated with synthetic sales data for analytics and testing workflow success.
+This automation workflow is run from self-hosted instances of N8N and PostgreSQL. The PostgreSQL instance is populated with synthetic sales data via a local script for analytics and testing workflow success.
 
 This repository contains:
 - Docker Compose configuration and a custom `n8n` image build.
@@ -213,11 +213,6 @@ If community node packages exist but do not appear in the UI, verify:
 ## Contributing
 
 Contributions are welcome. If you open a PR, include a clear description of the change, why it is needed, and any tests or verification steps.
-
-## License
-
-This project is provided under the terms in the `LICENSE` file included in the repository.
-
 
 ## Authors
 - [Michael Adebayo](https://www.github.com/MichAdebayo)
