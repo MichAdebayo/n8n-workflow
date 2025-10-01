@@ -1,0 +1,143 @@
+{
+  "name": "Get data",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "intermediate-step",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d4ab5274-b973-4f16-ba9b-035df0098fb4",
+      "name": "Webhook",
+      "webhookId": "bbf8e6ff-d9c2-4f2d-9275-4ce22ad6b338"
+    },
+    {
+      "parameters": {
+        "jsCode": "const executionId = $json.query.id;\nreturn [{ json: { executionId: executionId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "0794b2d3-e101-4554-8895-fcaa167dbbf0",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "=http://0.0.0.0:5678/api/v1/executions/{{$json.executionId}}?includeData=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "n8nApi",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "043d945b-344f-4988-8090-c3f29f98473d",
+      "name": "HTTP Request",
+      "credentials": {
+        "n8nApi": {
+          "id": "PYSfRUJQxoAJ04Wl",
+          "name": "n8n account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// The incoming data is the large JSON object from the HTTP Request node\nconst executionData = $json;\n\n// Path to the output of the \"Set\" node in Workflow A\n// Note: The node name is just \"Set\"\nconst setNodeData = executionData.data.resultData.runData.Set[0].data.main[0][0].json;\n\n// Extract the two required values\nconst chartUrl = setNodeData.url;\nconst summaryText = setNodeData.message.content.executive_summary;\n\n// Return the clean data for the next workflow (Workflow C)\nreturn [{\n    json: {\n        finalChartUrl: chartUrl,\n        finalSummary: summaryText\n    }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "7efbccd0-a7cc-404e-ac37-6c74ebd61080",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://0.0.0.0:5678/webhook-test/send-to-ceo",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chartUrl\": \"{{$json.finalChartUrl}}\",\n  \"summary\": \"{{$json.finalSummary}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "953d0e0b-76a1-4675-a95d-01ba31da0646",
+      "name": "HTTP Request1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ba38da5a-d2b6-41ed-886e-1162ee47bce1",
+  "meta": {
+    "instanceId": "33e5ba94f4c62aa9dcb8026b15f5873f3401285179a59eddd4dbd58a7ecba0c9"
+  },
+  "id": "UjbXxhD7YNpNH5UM",
+  "tags": []
+}

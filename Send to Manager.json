@@ -1,0 +1,71 @@
+{
+  "name": "Send to Manager",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "send-to-ceo",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -560,
+        -160
+      ],
+      "id": "335df857-dec1-4683-b3dd-d57815b26368",
+      "name": "Webhook",
+      "webhookId": "e8dec0da-177c-485c-aa39-36eb2950e24b"
+    },
+    {
+      "parameters": {
+        "fromEmail": "adebayomichael@gmail.com",
+        "toEmail": "david.scott.2875@gmail.com",
+        "subject": "Sales Weekly Digest",
+        "emailFormat": "text",
+        "text": "=<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Weekly Sales Digest</title>\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      color: #333;\n      line-height: 1.5;\n      margin: 0;\n      padding: 0;\n      background-color: #f4f4f4;\n    }\n    .container {\n      max-width: 600px;\n      margin: 20px auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 8px;\n      box-shadow: 0 0 10px rgba(0,0,0,0.1);\n      text-align: center;\n    }\n    h2, h3 {\n      color: #2E86C1;\n    }\n    p {\n      margin: 15px 0;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <h2>Weekly Sales Digest</h2>\n    <h3>Dear David,</h3>\n    <p>Find attached the latest sales summary for your review:</p>\n\n    <!-- Embed QuickChart -->\n    <img src=\"{{ $json.body.chartUrl }}\" alt=\"Sales Chart\" width=\"100%\" style=\"max-width:550px;\"/>\n\n    <!-- Executive summary -->\n    <p>{{ $json.body.summary }}</p>\n\n    <p>Best regards,<br/>Your Analytics Team</p>\n  </div>\n</body>\n</html>\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -288,
+        -160
+      ],
+      "id": "f0cd4da0-e3a8-4ada-abf1-06539078e8df",
+      "name": "Send email",
+      "webhookId": "1536ba3e-8326-4e70-aed6-0d67bff75e84",
+      "credentials": {
+        "smtp": {
+          "id": "FjOUKJCom1hc1D7a",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ce1063e0-951e-4bb1-a14e-d506888dab4e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33e5ba94f4c62aa9dcb8026b15f5873f3401285179a59eddd4dbd58a7ecba0c9"
+  },
+  "id": "zXzI5njARLsihzkc",
+  "tags": []
+}

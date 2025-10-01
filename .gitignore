@@ -1,6 +1,70 @@
+# Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode,venv,linux
+# Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode,venv,linux
+
+### Linux ###
+*~
+
+# temporary files which can be created if a process still has a handle open of a deleted file
+.fuse_hidden*
+
+# KDE directory preferences
+.directory
+
+# Linux trash folder which might appear on any partition or disk
+.Trash-*
+
+# .nfs files are created when an open file is removed but is still being accessed
+.nfs*
+
+### venv ###
+# Virtualenv
+# http://iamzed.com/2009/05/07/a-primer-on-virtualenv/
+.Python
+[Bb]in
+[Ii]nclude
+[Ll]ib
+[Ll]ib64
+[Ll]ocal
+[Ss]cripts
+pyvenv.cfg
 .venv
+pip-selfcheck.json
+
+### VisualStudioCode ###
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix
+
+### VisualStudioCode Patch ###
+# Ignore all local history of files
+.history
+.ionide
+
+# PNG files
+*.PNG
+*.png
+*.jpg
+
+# Env variables
 .env
-__pycache__/
-.vscode/
+
+# Volumes
 volumes/
-*.db
+
+# Mac system files and specific sh files
+.DS_Store
+setup-bash.sh
+
+# MD File
+resource.md 
+
+# End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,venv,linux
